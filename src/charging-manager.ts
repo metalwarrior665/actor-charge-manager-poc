@@ -1,6 +1,7 @@
-import { Actor, log, type ActorRun, type Dataset, type ApifyClient } from 'apify';
+import { Actor, log, type ActorRun, type Dataset } from 'apify';
 import type { Dataset as DatasetInfo } from 'apify-client';
-import { got, HTTPError } from 'got-scraping';
+// eslint-disable-next-line import/no-extraneous-dependencies
+import { got, type HTTPError } from 'got-scraping';
 
 // TODO: Parse possible error issues
 const chargeRequest = async <ChargeEventId extends string>(event: ChargeEventId, count: number): Promise<void> => {
@@ -41,7 +42,7 @@ interface ApifyApiPricingInfo<ChargeEventId extends string> {
  */
 type ApifyApiChargedEventCounts<ChargeEventId extends string> = Record<ChargeEventId, number>;
 
-interface ActorRunCorrectType<ChargeEventId extends string> extends ActorRun {
+export interface ActorRunCorrectType<ChargeEventId extends string> extends ActorRun {
     pricingInfo?: ApifyApiPricingInfo<ChargeEventId>,
     chargedEventCounts?: ApifyApiChargedEventCounts<ChargeEventId>,
     options: ActorRun['options'] & {
@@ -53,6 +54,7 @@ type ChargeState<ChargeEventId extends string> = Record<ChargeEventId, { chargeC
 
 interface ChargeResult {
     chargedCount: number,
+    eventChargeLimitReached: boolean,
     outcome: 'event_not_registered' | 'charge_limit_reached' | 'charge_successful',
 }
 
@@ -84,8 +86,10 @@ export class ChargingManager<ChargeEventId extends string> {
      * (especially useful in case of a migration or an abortion); for the global number of results,
      * also sets up persisting at the KVStore
      */
-    public static async initialize<ChargeEventId extends string>(): Promise<ChargingManager<ChargeEventId>> {
-        const runInfo = await Actor.apifyClient.run(Actor.getEnv().actorRunId!).get() as ActorRunCorrectType<ChargeEventId>;
+    public static async initialize<ChargeEventId extends string>(localMock?: ActorRunCorrectType<ChargeEventId>): Promise<ChargingManager<ChargeEventId>> {
+        const runInfo = Actor.isAtHome()
+            ? await Actor.apifyClient.run(Actor.getEnv().actorRunId!).get() as ActorRunCorrectType<ChargeEventId>
+            : localMock!;
 
         const chargeState = {} as ChargeState<ChargeEventId>;
 
@@ -99,6 +103,7 @@ export class ChargingManager<ChargeEventId extends string> {
             }
         }
 
+        // We use unnamed dataset so it is deleted with data retention. Because of that, we have to persist its ID
         let metadataDatasetInfo = await Actor.getValue('METADATA_DATASET_INFO') as DatasetInfo | null;
 
         if (!metadataDatasetInfo) {
@@ -111,19 +116,35 @@ export class ChargingManager<ChargeEventId extends string> {
     }
 
     /**
-     * How many events of a given type can still be charged for before reaching the limit;
+     * How much more money PPE events can charge before reaching the max cost per run
      */
-    private countRemainingChargeCount(event: ACTOR_CHARGE_EVENT): number {
-        if (this.remainingGlobalCostUsd === Infinity) {
-            return Infinity;
+    public remainingChargeBudgetUsd(): number {
+        // Infinity stays at infinity
+        let remainingBudgetUsd = this.maxTotalChargeUsd;
+        for (const eventId of Object.keys(this.chargeState)) {
+            remainingBudgetUsd -= this.chargeState[eventId as ChargeEventId].chargeCount * this.chargeState[eventId as ChargeEventId].eventPriceUsd;
         }
-        // to avoid rounding errors, first round to 4 decimal places, as Math.flooring 4.9999999 will incorrectly return 5
-        return Math.floor(Number((this.remainingGlobalCostUsd / (this.ppeChargeInfo[event]?.eventPriceUsd ?? 0)).toFixed(4)));
+        // Keeping float precision issues at bay
+        return Number(remainingBudgetUsd.toFixed(6));
     }
 
     /**
-     * Given a sequence of events, will cut it off at the point where the limit is reached
+     * How many events of a given type can still be charged for before reaching the limit;
+     * If the event is not registered, returns Infinity (free of charge)
      */
+    public eventChargeCountTillLimit(event: ChargeEventId): number {
+        if (!this.chargeState[event]) {
+            return Infinity;
+        }
+        // First round as Math.floor(4.9999999999999999) will incorrectly return 5
+        return Math.floor(Number((this.remainingChargeBudgetUsd() / (this.chargeState[event].eventPriceUsd)).toFixed(4)));
+    }
+
+    /**
+     * TODO: Make this into an event planner
+     */
+
+    /*
     public limitChargeEvents(events: ACTOR_CHARGE_EVENT[], countScheduled: boolean): ACTOR_CHARGE_EVENT[] {
         let wouldBeRemainingPrice = countScheduled ? this.remainingScheduledCostUsd : this.remainingGlobalCostUsd;
         const limitedEvents: ACTOR_CHARGE_EVENT[] = [];
@@ -137,21 +158,24 @@ export class ChargingManager<ChargeEventId extends string> {
         }
         return limitedEvents;
     }
+        */
 
     /**
      * Will charge for the specified event within PPE model (no-op if not PPE or no such event is present in this miniactor).
+     * Unregistered events are 'free of charge' (eventChargeLimitReached: false)
+     * metadata length represent count of events to charge for (add empty objects at minimum)
      */
-    public async charge(event: ChargeEventId, requestedChargeCount: number, metadata: Record<string, unknown>[]): Promise<ChargeResult> {
+    public async charge(event: ChargeEventId, metadata: Record<string, unknown>[]): Promise<ChargeResult> {
         if (!this.chargeState[event]) {
-            return { chargedCount: 0, outcome: 'event_not_registered' };
+            return { chargedCount: 0, outcome: 'event_not_registered', eventChargeLimitReached: false };
         }
 
-        const remainingChargeCount = this.countRemainingChargeCount(event);
-        if (remainingChargeCount <= 0) {
-            return { chargedCount: 0, outcome: 'charge_limit_reached' };
+        const remainingEventChargeCount = this.eventChargeCountTillLimit(event);
+        if (remainingEventChargeCount <= 0) {
+            return { chargedCount: 0, outcome: 'charge_limit_reached', eventChargeLimitReached: true };
         }
 
-        const chargeableCount = Math.min(requestedChargeCount, remainingChargeCount);
+        const chargeableCount = Math.min(metadata.length, remainingEventChargeCount);
         // Locally, we just skip this but do everything else as test
         if (Actor.isAtHome()) {
             await chargeRequest<ChargeEventId>(event, chargeableCount);
@@ -171,39 +195,20 @@ export class ChargingManager<ChargeEventId extends string> {
         }
         await this.metadataDataset.pushData(eventMetadataItems);
 
-        log.debug(`[CHARGING_MANAGER] Charged for ${chargeableCount} ${event} events, remaining cost: ${this.remainingGlobalCostUsd()}`);
-        // this should only happen when limit is reached exactly, so no overflow,
-        // because `limitChargeEvents` tries to cut off just BEFORE the limit is reached
-        if ((this.hasReachedChargeLimit()
-            // this means that even though we haven't precicely reached the limit, we're unlikely to push anything more, as little money is left
-            || chargeableCount < numCharges)
-            && !mock) {
-            log.warning('Charging limit reached, exiting');
-            await Actor.exit({
-                statusMessage: 'Charging limit reached',
-            });
-        }
-    }
+        const remainingEventChargeCountAfterCharge = this.eventChargeCountTillLimit(event);
 
-    /**
-     * How much more money PPE events can charge before reaching the max cost per run
-     */
-    private remainingGlobalCostUsd(): number {
-        return this.maxCostPerRunUsd
-            // this might result int minor rounding errors, so we round it to 4 decimal places where it's not noticeable
-            ? Number((this.maxCostPerRunUsd - Object.values(this.ppeChargeInfo).reduce((
-                acc,
-                { chargeCount, eventPriceUsd },
-            ) => acc + Number((chargeCount * eventPriceUsd).toFixed(4)), 0)).toFixed(4))
-            : Infinity;
+        log.debug(`[CHARGING_MANAGER] Charged for ${chargeableCount} ${event} events, remaining events: ${remainingEventChargeCountAfterCharge} `
+            + `remaining cost: ${this.remainingChargeBudgetUsd()}`);
+
+        return { chargedCount: chargeableCount, outcome: 'charge_successful', eventChargeLimitReached: remainingEventChargeCountAfterCharge <= 0 };
     }
 }
 
 /**
- * Returns posts (videos) of a specified kind that can be pushed before reaching the limit (PPR or PPE);
- * If PPE, also takes into account the media that would be downloaded for each post and media already scheduled for download,
- * specifying what media download is allowed for each post
+ * TODO: Make this into an event planner
  */
+
+/*
 export async function limitPosts({
     posts,
     label,
@@ -273,25 +278,4 @@ export async function limitPosts({
         wasLimited: limitedPosts.length < posts.length,
     };
 }
-
-export function getChargeEventsForDownloadParams(
-    post: OutputVideo,
-    downloadOptions: Omit<DownloadParams, 'kvStoreId'>,
-): ACTOR_CHARGE_EVENT[] {
-    const events: ACTOR_CHARGE_EVENT[] = [];
-    if (downloadOptions.shouldDownloadCovers) {
-        events.push(ACTOR_CHARGE_EVENT.COVER_DOWNLOAD);
-    }
-    if (downloadOptions.shouldDownloadVideos) {
-        events.push(ACTOR_CHARGE_EVENT.VIDEO_DOWNLOAD);
-    }
-    if (downloadOptions.shouldDownloadSlideshowImages) {
-        const expectedImages = post.slideshowImageLinks?.length ?? 0;
-        events.push(...Array.from({ length: expectedImages }, () => ACTOR_CHARGE_EVENT.SLIDESHOW_IMAGE_DOWNLOAD));
-    }
-    if (downloadOptions.shouldDownloadSubtitles) {
-        const expectedSubtitles = post.videoMeta.subtitleLinks?.length ?? 0;
-        events.push(...Array.from({ length: expectedSubtitles }, () => ACTOR_CHARGE_EVENT.SUBTITLE_DOWNLOAD));
-    }
-    return events;
-}
+*/
