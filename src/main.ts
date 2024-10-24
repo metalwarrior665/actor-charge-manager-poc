@@ -17,6 +17,7 @@ const { chargeCount, mockRunInfoLocally } = (await Actor.getInput<Input>())!;
 const chargingManager = await ChargingManager.initialize<EventId>(mockRunInfoLocally);
 
 const chargeResult1 = await chargingManager.charge('actor-start', [{}]);
+console.log('chargeResult1');
 console.dir(chargeResult1);
 
 const metadata = [];
@@ -25,6 +26,7 @@ for (let i = 0; i < chargeCount; i++) {
     metadata.push({ index: i });
 }
 const chargeResult2 = await chargingManager.charge('product-result', metadata);
+console.log('chargeResult2');
 console.dir(chargeResult2);
 
 // Gracefully exit the Actor process. It's recommended to quit all Actors with an exit()
