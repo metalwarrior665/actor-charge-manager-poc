@@ -86,10 +86,9 @@ export class ChargingManager<ChargeEventId extends string> {
      * (especially useful in case of a migration or an abortion); for the global number of results,
      * also sets up persisting at the KVStore
      */
-    public static async initialize<ChargeEventId extends string>(localMock?: ActorRunCorrectType<ChargeEventId>): Promise<ChargingManager<ChargeEventId>> {
-        const runInfo = Actor.isAtHome()
-            ? await Actor.apifyClient.run(Actor.getEnv().actorRunId!).get() as ActorRunCorrectType<ChargeEventId>
-            : localMock!;
+    public static async initialize<ChargeEventId extends string>(): Promise<ChargingManager<ChargeEventId>> {
+        // To test locally, set ACTOR_RUN_ID=<platform run with PPE enabled>
+        const runInfo = await Actor.apifyClient.run(Actor.getEnv().actorRunId!).get() as ActorRunCorrectType<ChargeEventId>;
 
         const chargeState = {} as ChargeState<ChargeEventId>;
 
