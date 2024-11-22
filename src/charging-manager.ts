@@ -141,26 +141,6 @@ export class ChargingManager<ChargeEventId extends string> {
     }
 
     /**
-     * TODO: Make this into an event planner
-     */
-
-    /*
-    public limitChargeEvents(events: ACTOR_CHARGE_EVENT[], countScheduled: boolean): ACTOR_CHARGE_EVENT[] {
-        let wouldBeRemainingPrice = countScheduled ? this.remainingScheduledCostUsd : this.remainingGlobalCostUsd;
-        const limitedEvents: ACTOR_CHARGE_EVENT[] = [];
-        for (const event of events) {
-            if (wouldBeRemainingPrice < (this.ppeChargeInfo[event]?.eventPriceUsd ?? 0)) {
-                break;
-            }
-            wouldBeRemainingPrice -= this.ppeChargeInfo[event]?.eventPriceUsd ?? 0;
-            wouldBeRemainingPrice = Number(wouldBeRemainingPrice.toFixed(4));
-            limitedEvents.push(event);
-        }
-        return limitedEvents;
-    }
-        */
-
-    /**
      * Will charge for the specified event within PPE model (no-op if not PPE or no such event is present in this miniactor).
      * Unregistered events are 'free of charge' (eventChargeLimitReached: false)
      * metadata length represent count of events to charge for (add empty objects at minimum)
@@ -203,79 +183,3 @@ export class ChargingManager<ChargeEventId extends string> {
         return { chargedCount: chargeableCount, outcome: 'charge_successful', eventChargeLimitReached: remainingEventChargeCountAfterCharge <= 0 };
     }
 }
-
-/**
- * TODO: Make this into an event planner
- */
-
-/*
-export async function limitPosts({
-    posts,
-    label,
-    downloadOptions,
-    chargingManager,
-}: {
-    posts: XHRResponseParserOutput[];
-    label: LABEL;
-    downloadOptions: Omit<DownloadParams, 'kvStoreId'>;
-    chargingManager?: ChargingManager;
-}): Promise<{
-    posts: {
-        post: XHRResponseParserOutput;
-        downloadOptions: Omit<DownloadParams, 'kvStoreId'>;
-    }[],
-    wasLimited: boolean;
-}> {
-    chargingManager ??= await ChargingManager.initialize();
-    // PPR
-    if (chargingManager.remainingGlobalResults !== Infinity) {
-        const limited = posts.slice(0, chargingManager.remainingGlobalResults).map((post) => ({ post, downloadOptions }));
-        return {
-            posts: limited,
-            wasLimited: limited.length < posts.length,
-        };
-    }
-    const limitedPosts: {
-        post: XHRResponseParserOutput;
-        downloadOptions: Omit<DownloadParams, 'kvStoreId'>;
-    }[] = [];
-    const projectedEventsSoFar = [];
-    for (const post of posts) {
-        const projectedEventsForPost = [
-            LABEL_TO_CHARGE_EVENT[label] ?? ACTOR_CHARGE_EVENT.POST_DATASET_ITEM,
-            ...getChargeEventsForDownloadParams(post.video, downloadOptions),
-        ];
-        const limitedEventCount = chargingManager.limitChargeEvents([
-            ...projectedEventsSoFar,
-            ...projectedEventsForPost,
-        ], true).length - [...projectedEventsSoFar, ...projectedEventsForPost].length;
-        const limitedEvents = limitedEventCount === 0 ? projectedEventsForPost : projectedEventsForPost.slice(0, limitedEventCount);
-        if (limitedEvents.length === projectedEventsForPost.length) {
-            limitedPosts.push({ post, downloadOptions });
-        } else if (limitedEvents.length > 0) {
-            const limitedDownloadOptions: Omit<DownloadParams, 'kvStoreId'> = {
-                ...downloadOptions,
-                shouldDownloadCovers: limitedEvents.includes(ACTOR_CHARGE_EVENT.COVER_DOWNLOAD),
-                shouldDownloadVideos: limitedEvents.includes(ACTOR_CHARGE_EVENT.VIDEO_DOWNLOAD),
-                shouldDownloadSubtitles: limitedEvents.filter((event) => event === ACTOR_CHARGE_EVENT.SUBTITLE_DOWNLOAD).length
-                    === post.video.videoMeta.subtitleLinks?.length,
-                shouldDownloadSlideshowImages: limitedEvents.filter((event) => event === ACTOR_CHARGE_EVENT.SLIDESHOW_IMAGE_DOWNLOAD).length
-                    === post.video.slideshowImageLinks?.length,
-            };
-            limitedPosts.push({
-                post: {
-                    ...post,
-                    video: updatePostMediaLinks(post.video, limitedDownloadOptions),
-                },
-                downloadOptions: limitedDownloadOptions,
-            });
-            break;
-        }
-        projectedEventsSoFar.push(...projectedEventsForPost);
-    }
-    return {
-        posts: limitedPosts,
-        wasLimited: limitedPosts.length < posts.length,
-    };
-}
-*/
