@@ -16,19 +16,20 @@ await Actor.init();
 
 log.setLevel(log.LEVELS.DEBUG);
 
+console.dir(process.env)
+
 // To test your implementation locally, you can create a dummy Actor on Apify, set PPE pricing to it, run it
 // and then start the local run with `ACTOR_RUN_ID=your_id apify run`
-const chargingManager = await ChargingManager.initialize<EventId>();
 
 // We want to charge this event only once, even if the Actor migrates or is resurrected
-if (chargingManager.chargedEventCount('actor-start-gb') === 0) {
+if ((await ChargingManager.chargedEventCount<EventId>('actor-start-gb')) === 0) {
     // We charge X times based on number of GBs the run was started with
     // This is to motivate users to run with low memory unless they really need more for larger runs
     const actorRunGBs = Math.ceil((Actor.getEnv().memoryMbytes!) / 1024);
     const actorStartEventsMetadata = Array.from({ length: actorRunGBs }, () => ({}));
     // `actor-start-gb` event doesn't push anything to dataset so we call the charging manager directly
     // Each metadata object counts as a separate charge event, so e.g. 4 empty objects will charge 4 times for 1 GB
-    const chargeResultStart = await chargingManager.charge('actor-start-gb', actorStartEventsMetadata);
+    const chargeResultStart = await ChargingManager.charge<EventId>('actor-start-gb', actorStartEventsMetadata);
     console.log('Charge result for actor-start-gb');
     console.dir(chargeResultStart);
 }
@@ -41,11 +42,11 @@ if (chargingManager.chargedEventCount('actor-start-gb') === 0) {
 // of transitioning from PPR to PPE
 const DUMMY_ITEMS = Array.from({ length: 5 }, (_, i) => ({ itemIndex: i }));
 
-const { eventChargeLimitReached } = await pushDataPPEAware(DUMMY_ITEMS, chargingManager, 'product-result');
+const { eventChargeLimitReached } = await pushDataPPEAware(DUMMY_ITEMS, 'product-result');
 
 // We can use the shouldStop flag to determine if we should stop our Actor or there is still budget to continue
 if (eventChargeLimitReached) {
-    await Actor.exit(`Stopping Actor because we reached the max total charge of ${chargingManager.maxTotalChargeUsd}`);
+    await Actor.exit(`Stopping Actor because we reached the max total charge of ${ChargingManager.maxTotalChargeUsd}`);
 }
 
 // Imagine more code here that pushes more items

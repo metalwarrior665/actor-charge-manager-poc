@@ -1,16 +1,15 @@
 import { Actor } from 'apify';
 
-import type { ChargingManager } from './charging-manager.js';
+import { ChargingManager } from './charging-manager.js';
 import type { EventId } from './main.js';
 
 export const pushDataPPEAware = async (
     items: Parameters<Actor['pushData']>[0],
-    chargingManager: ChargingManager<EventId>,
     eventId: EventId,
 ): Promise<{ eventChargeLimitReached: boolean, pushedItemCount: number }> => {
     const itemsAsArray = Array.isArray(items) ? items : [items];
     // First we attempt to charge event for each item, we use the items as metadata for the event
-    const { chargedCount, eventChargeLimitReached } = await chargingManager.charge(eventId, itemsAsArray);
+    const { chargedCount, eventChargeLimitReached } = await ChargingManager.charge<EventId>(eventId, itemsAsArray);
 
     // We always use the PPR aware push so that it works when we transition from PPR to PPE
     // If it is already PPE, this behaves like normal Actor.pushData

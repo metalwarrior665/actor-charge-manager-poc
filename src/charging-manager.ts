@@ -73,6 +73,11 @@ export class ChargingManager<ChargeEventId extends string> {
      */
     private chargeState: ChargeState<ChargeEventId>;
     private readonly metadataDataset: Dataset;
+
+    // For Static methods
+    private static _instance: ChargingManager<string> | undefined;
+    // For Static methods
+    private static isBeingInitialized = false;
     private constructor(initialChargeState: ChargeState<ChargeEventId>, metadataDataset: Dataset, maxTotalChargeUsd?: number) {
         this.chargeState = initialChargeState;
         this.metadataDataset = metadataDataset;
@@ -102,7 +107,7 @@ export class ChargingManager<ChargeEventId extends string> {
             }
         }
 
-        log.debug('CHANRGING_MANAGER] Initialized with maxTotalChargeUsd and charge state:', chargeState);
+        log.debug('CHARGING_MANAGER] Initialized with maxTotalChargeUsd and charge state:', chargeState);
 
         // We use unnamed dataset so it is deleted with data retention. Because of that, we have to persist its ID
         let metadataDatasetInfo = await Actor.getValue('METADATA_DATASET_INFO') as DatasetInfo | null;
@@ -192,5 +197,49 @@ export class ChargingManager<ChargeEventId extends string> {
 
     public chargedEventCount(eventId: ChargeEventId): number {
         return this.chargeState[eventId].chargeCount;
+    }
+
+    /**
+     * If multiple methods initialize, only one does, others wait for the instance
+     */
+    static async getDefaultInitializedInstance<ChargeEventId extends string>(): Promise<ChargingManager<ChargeEventId>> {
+        if (!this._instance && !this.isBeingInitialized) {
+            this.isBeingInitialized = true;
+            this._instance = await this.initialize<ChargeEventId>();
+            this.isBeingInitialized = false;
+        }
+
+        while (!this._instance) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+
+        return this._instance;
+    }
+
+    // Below are all methods converted to static
+    // They have to be async so we can dynamically initialize on the first use of any method
+    // Not sure if this is better or worse than forcing to call .init() first
+    static async remainingChargeBudgetUsd<ChargeEventId extends string>(): Promise<number> {
+        const chargingManager = await this.getDefaultInitializedInstance<ChargeEventId>();
+        return chargingManager.remainingChargeBudgetUsd();
+    }
+
+    static async eventChargeCountTillLimit<ChargeEventId extends string>(event: ChargeEventId): Promise<number> {
+        const chargingManager = await this.getDefaultInitializedInstance<ChargeEventId>();
+        return chargingManager.eventChargeCountTillLimit(event);
+    }
+
+    static async charge<ChargeEventId extends string>(event: ChargeEventId, metadata: Record<string, unknown>[]): Promise<ChargeResult> {
+        const chargingManager = await this.getDefaultInitializedInstance<ChargeEventId>();
+        return chargingManager.charge(event, metadata);
+    }
+
+    static async chargedEventCount<ChargeEventId extends string>(eventId: ChargeEventId): Promise<number> {
+        const chargingManager = await this.getDefaultInitializedInstance<ChargeEventId>();
+        return chargingManager.chargedEventCount(eventId);
+    }
+
+    static get maxTotalChargeUsd(): number {
+        return this._instance?.maxTotalChargeUsd ?? Infinity;
     }
 }
