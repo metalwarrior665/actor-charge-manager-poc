@@ -19,4 +19,4 @@ Available here: https://github.com/metalwarrior665/actor-charge-manager-poc
 This example doesn't show how to implement a solution for the whole Crawlee crawler. In that case, you should pass `chargingManager` around in context and use `await crawler.teardown()` once the charging manager returns `eventChargeLimitReached` true (or if you cannot squeeze more events into `chargingManager.eventChargeCountTillLimit(eventId)`)
 
 ## Example run
-Example run with priced events: https://console.apify.com/view/runs/WxEqtS7CQee4biw4S
+Example run with priced events: https://console.apify.com/view/runs/WxEqtS7CQee4biw4S. See also generated [metadata dataset](https://api.apify.com/v2/datasets/cCPTz0xmsqXpeAWQl/items?clean=true&format=html&limit=1000)
