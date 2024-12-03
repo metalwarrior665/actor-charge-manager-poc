@@ -65,7 +65,7 @@ export class ChargingManager<ChargeEventId extends string> {
     /**
      * Can be infinity if not specified by the user
      */
-    private readonly maxTotalChargeUsd: number = Infinity;
+    readonly maxTotalChargeUsd: number = Infinity;
     /**
      * If PPE is on, contains info on how much each event costs and how many times it was charged for;
      * Will only contain events relevant to the current miniactor
@@ -101,6 +101,8 @@ export class ChargingManager<ChargeEventId extends string> {
                 };
             }
         }
+
+        log.debug('CHANRGING_MANAGER] Initialized with maxTotalChargeUsd and charge state:', chargeState);
 
         // We use unnamed dataset so it is deleted with data retention. Because of that, we have to persist its ID
         let metadataDatasetInfo = await Actor.getValue('METADATA_DATASET_INFO') as DatasetInfo | null;
@@ -176,9 +178,19 @@ export class ChargingManager<ChargeEventId extends string> {
 
         const remainingEventChargeCountAfterCharge = this.eventChargeCountTillLimit(event);
 
-        log.debug(`[CHARGING_MANAGER] Charged for ${chargeableCount} ${event} events, remaining events: ${remainingEventChargeCountAfterCharge} `
-            + `remaining cost: ${this.remainingChargeBudgetUsd()}`);
+        const chargeResult: ChargeResult = {
+            chargedCount: chargeableCount,
+            outcome: 'charge_successful',
+            eventChargeLimitReached: remainingEventChargeCountAfterCharge <= 0,
+        };
 
-        return { chargedCount: chargeableCount, outcome: 'charge_successful', eventChargeLimitReached: remainingEventChargeCountAfterCharge <= 0 };
+        log.debug(`[CHARGING_MANAGER] Charged for ${chargeableCount} ${event} events, remaining events: ${remainingEventChargeCountAfterCharge} `
+            + `remaining cost: ${this.remainingChargeBudgetUsd()}, charge result:`, chargeResult);
+
+        return chargeResult;
+    }
+
+    public chargedEventCount(eventId: ChargeEventId): number {
+        return this.chargeState[eventId].chargeCount;
     }
 }
