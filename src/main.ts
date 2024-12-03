@@ -1,6 +1,6 @@
 // Run this locally by injecting my test run ID: ACTOR_RUN_ID=kbsnsIf2r8xC5HUaL apify run
 // or inject your own run ID after you set PPE pricing to your Actor
-// You can also check real PPE run here: 
+// You can also check real PPE run here: https://console.apify.com/view/runs/WxEqtS7CQee4biw4S
 
 import { Actor, log } from 'apify';
 // Charging manager ensures that we don't charge more than max total charge USD for the run
