@@ -16,8 +16,6 @@ await Actor.init();
 
 log.setLevel(log.LEVELS.DEBUG);
 
-console.dir(process.env)
-
 // To test your implementation locally, you can create a dummy Actor on Apify, set PPE pricing to it, run it
 // and then start the local run with `ACTOR_RUN_ID=your_id apify run`
 
@@ -46,7 +44,7 @@ const { eventChargeLimitReached } = await pushDataPPEAware(DUMMY_ITEMS, 'product
 
 // We can use the shouldStop flag to determine if we should stop our Actor or there is still budget to continue
 if (eventChargeLimitReached) {
-    await Actor.exit(`Stopping Actor because we reached the max total charge of ${ChargingManager.maxTotalChargeUsd}`);
+    await Actor.exit(`Stopping Actor because we reached the max total charge of ${ChargingManager.getMaxTotalChargeUsd()} USD`);
 }
 
 // Imagine more code here that pushes more items

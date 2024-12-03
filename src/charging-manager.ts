@@ -239,7 +239,8 @@ export class ChargingManager<ChargeEventId extends string> {
         return chargingManager.chargedEventCount(eventId);
     }
 
-    static get maxTotalChargeUsd(): number {
-        return this._instance?.maxTotalChargeUsd ?? Infinity;
+    static async getMaxTotalChargeUsd(): Promise<number> {
+        const chargingManager = await this.getDefaultInitializedInstance<string>();
+        return chargingManager.maxTotalChargeUsd ?? Infinity;
     }
 }
