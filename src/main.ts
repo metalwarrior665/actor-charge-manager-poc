@@ -5,6 +5,8 @@
 import { Actor, log } from 'apify';
 // Charging manager ensures that we don't charge more than max total charge USD for the run
 // It also tells us how many events we actually charged for (if we hit the limit)
+// This code uses ChargingManager as static class but you can also instantiate it and send it around
+// with const chargingManager = await ChargingManager.initialize<EventId>()
 import { ChargingManager } from './charging-manager.js';
 // pushDataPPEMaxAware uses charging manager to ensure we push only as much as we can afford
 // It also fallbacks to PPR if PPE is not enabled yet, this is useful for the transition period
